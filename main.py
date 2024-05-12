@@ -18,9 +18,9 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-CHOOSING, TYPING_COST, TYPING_COMMENT, CHECK, CHECK1 = range(5)
+CHOOSING, TYPING_COST, TYPING_COMMENT, CHECK, CHECK1, CHECK2 = range(6)
 
-reply_keyboard = [["Добавить заказ"]]
+reply_keyboard = [["Добавить заказ"], ['Список заказов']]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
@@ -36,15 +36,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def regular_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Введите адрес")
     return TYPING_COST
-
-
-async def custom_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Ask the user for a description of a custom category."""
-    await update.message.reply_text(
-        'Alright, please send me the category first, for example "Most impressive skill"'
-    )
-
-    return TYPING_COMMENT
 
 
 async def received_information(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -75,15 +66,30 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"Проверьте:\n адрес: {user_data['adress']}\n цена: {user_data['summ']}\n комментарий: {user_data['comment']}", reply_markup=kb)
     return CHECK1
 
+
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print('1')
+    keyboard = [['В главное меню']]
+    kb = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     con = sqlite3.connect("orders")
     cur = con.cursor()
-    cur.execute(f'''INSERT INTO orders ('adress', 'summ', 'comment')
-                    VALUES ({context.user_data['adress']}, {int(context.user_data['summ'])}, {context.user_data['comment']})''')
+    cur.execute(f'''INSERT INTO orders (adress, summ, comment)
+                    VALUES ('{context.user_data['adress']}', {int(context.user_data['summ'])}, '{context.user_data['comment']}')''')
     con.commit()
     con.close()
-    return ConversationHandler.END
+    await update.message.reply_text('Заказ добавлен', reply_markup=kb)
+    return CHECK2
+
+
+async def order_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    con = sqlite3.connect("orders")
+    cur = con.cursor()
+    list_of_orders = list(cur.execute(f'''SELECT id, adress, summ, comment FROM orders'''))
+    keyboard = [[]]
+    for el in list_of_orders:
+        await update.message.reply_text(f'Заказ №{el[0]}: \n адрес: {el[1]}\n цена: {el[2]}\n комментарий: {el[3]}')
+        keyboard[0].append(str(el[0]))
+    kb = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+    await update.message.reply_text('Выберите заказ, который хотите взять', reply_markup=kb)
 
 
 def main():
@@ -93,9 +99,11 @@ def main():
         states={
             CHOOSING: [
                 MessageHandler(
-                    filters.Regex("^(Добавить заказ)$"), regular_choice
+                    filters.Regex("Добавить заказ"), regular_choice
                 ),
-                MessageHandler(filters.Regex("^Something else...$"), custom_choice),
+                MessageHandler(
+                    filters.Regex("Список заказов"), order_list
+                )
             ],
             TYPING_COMMENT: [
                 MessageHandler(
@@ -125,6 +133,11 @@ def main():
                     filters.Regex("Редактировать"), regular_choice
                 )
             ],
+            CHECK2: [
+                MessageHandler(
+                    filters.Regex("В главное меню"), start
+                )
+            ]
         },
         fallbacks=[MessageHandler(filters.TEXT, start)],
     )
