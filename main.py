@@ -51,7 +51,11 @@ async def input_comment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     """Store info provided by user and ask for the next category."""
     user_data = context.user_data
     text = update.message.text
-    user_data['summ'] = text
+    try:
+        user_data['summ'] = int(text)
+    except ValueError:
+        await update.message.reply_text('Цена должна быть числом. Начните заново.', reply_markup=markup)
+        return CHOOSING
     await update.message.reply_text('Добавьте комментарий')
     return CHECK
 
@@ -60,6 +64,7 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Store info provided by user and ask for the next category."""
     user_data = context.user_data
     text = update.message.text
+    user_data['user'] = update.message.from_user.id
     user_data['comment'] = text
     keyboard = [["Подтвердить"], ["Отмена", "Редактировать"]]
     kb = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
@@ -72,8 +77,9 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     con = sqlite3.connect("orders")
     cur = con.cursor()
-    cur.execute(f'''INSERT INTO orders (adress, summ, comment)
-                    VALUES ('{context.user_data['adress']}', {int(context.user_data['summ'])}, '{context.user_data['comment']}')''')
+    cur.execute(f'''INSERT INTO orders (adress, summ, comment, user, status)
+                    VALUES ('{context.user_data['adress']}', '{context.user_data['summ']}', '{context.user_data['comment']}',
+                            '{context.user_data['user']}', 0)''')
     con.commit()
     con.close()
     await update.message.reply_text('Заказ добавлен', reply_markup=kb)
@@ -83,13 +89,15 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def order_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     con = sqlite3.connect("orders")
     cur = con.cursor()
-    list_of_orders = list(cur.execute(f'''SELECT id, adress, summ, comment FROM orders'''))
+    list_of_orders = list(cur.execute(f'''SELECT id, adress, summ, comment FROM orders
+                                            WHERE status = 0'''))
     keyboard = [[]]
     for el in list_of_orders:
         await update.message.reply_text(f'Заказ №{el[0]}: \n адрес: {el[1]}\n цена: {el[2]}\n комментарий: {el[3]}')
         keyboard[0].append(str(el[0]))
     kb = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
-    await update.message.reply_text('Выберите заказ, который хотите взять', reply_markup=kb)
+    await update.message.reply_text('Выберите заказ, который хотите взять', reply_markup=kb) #TODO добавить функцию, которая изменяет статус выбранного заказа с 0 на 1 и уведомляет заказчика о том, что его заказ взят.
+
 
 
 def main():
